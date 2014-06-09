@@ -1361,7 +1361,8 @@ rt_dump(rtable *t)
   //debug("\n");
 
   fclose(fp);
-  debug("end-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp");
+  rename("/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp", "/pipedream/cache/bgp/dumps/local_bgpdump.txt");
+  debug("end-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt");
   exit(0);
 
 }
