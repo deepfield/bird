@@ -43,6 +43,7 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 #include "stdio.h"
+#include <unistd.h>
 
 pool *rt_table_pool;
 
