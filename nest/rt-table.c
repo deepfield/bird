@@ -42,6 +42,7 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include "stdio.h"
 
 pool *rt_table_pool;
 
@@ -59,6 +60,7 @@ static inline int rt_prune_table(rtable *tab);
 static inline void rt_schedule_gc(rtable *tab);
 static inline void rt_schedule_prune(rtable *tab);
 
+static FILE *fp = NULL;
 
 static inline struct ea_list *
 make_tmp_attrs(struct rte *rt, struct linpool *pool)
@@ -1173,6 +1175,16 @@ rt_refresh_end(rtable *t, struct announce_hook *ah)
 }
 
 
+static inline void
+craig_show_int_set(struct adata *ad, int way, byte *pos, byte *buf, byte *end)
+{
+  int i = int_set_format(ad, way, 0, pos, end - pos);
+  while (i)
+    {
+      i = int_set_format(ad, way, i, buf, end - buf - 1);
+    }
+}
+
 /**
  * rte_dump - dump a route
  * @e: &rte to be dumped
@@ -1183,11 +1195,129 @@ void
 rte_dump(rte *e)
 {
   net *n = e->net;
-  debug("%-1I/%2d ", n->n.prefix, n->n.pxlen);
-  debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
-  rta_dump(e->attrs);
-  if (e->attrs->src->proto->proto->dump_attrs)
-    e->attrs->src->proto->proto->dump_attrs(e);
+
+  //debug("%-1I/%2d ", n->n.prefix, n->n.pxlen);
+  //debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
+  //rta_dump(e->attrs);
+  if (e->attrs->src->proto->proto->dump_attrs) {
+	  //e->attrs->src->proto->proto->dump_attrs(e);
+  }
+
+  {
+	  ea_list *eal = e->attrs->eattrs;
+	  int i = 0;
+	  struct protocol *p;
+	  eattr *eattr;
+	  int status = GA_UNKNOWN;
+
+	  byte buf[CLI_MSG_SIZE];
+	  byte attr_buf[CLI_MSG_SIZE];
+	  byte *pos = buf, *end = buf + sizeof(buf);
+
+	  byte aspath[CLI_MSG_SIZE];
+	  byte community[CLI_MSG_SIZE];
+	  byte nexthop[CLI_MSG_SIZE];
+
+	  memset(aspath, 0, sizeof(aspath));
+	  memset(community, 0, sizeof(community));
+	  memset(nexthop, 0, sizeof(nexthop));
+
+	  //TABLE_DUMP2|1402308001|B|198.108.63.60|237|1.2.128.0/18|7018 38040 9737|IGP|198.108.93.55|100|0|237:2 237:7018|AG|9737 203.113.12.254|
+
+	  bsprintf(pos, "%I",  e->attrs->from);
+	  //printf("------- %s\n", buf);
+	  fprintf(fp, "TABLE_DUMP2|%d|B|%s||", (int) time(NULL), buf);
+
+	  bsprintf(pos, "%I/%2d",  n->n.prefix, n->n.pxlen);
+	  //printf("------- %s\n", buf);
+	  fprintf(fp, "%s|", buf);
+
+
+	  for(; eal; eal=eal->next) {
+		  for(i=0; i<eal->count; i++) {
+			  //ea_show(c, &eal->attrs[i]);
+
+			  memset(buf, 0, sizeof(buf));
+			  memset(attr_buf, 0, sizeof(attr_buf));
+
+			  byte *pos = buf, *end = buf + sizeof(buf);
+			  eattr = &eal->attrs[i];
+			  struct adata *ad = (eattr->type & EAF_EMBEDDED) ? NULL : eattr->u.ptr;
+
+			  if (p = attr_class_to_protocol[EA_PROTO(eattr->id)])  {
+				  //pos += bsprintf(pos, "%s.", p->name);
+				  //if (p->get_attr)
+				  
+				  //printf("******* %d\n", eattr->id);
+
+				  status = p->get_attr(eattr, pos, end - pos);
+				  pos += strlen(pos);
+
+				  if (!memcmp(buf, "next_hop", 7)) {
+					  memcpy(nexthop, buf+10, sizeof(nexthop) -10);
+				  }
+
+				  if (status < GA_FULL)    {
+					  *pos++ = ':';
+					  *pos++ = ' ';
+				  }
+
+				  byte *pos = attr_buf, *end = attr_buf + sizeof(attr_buf);
+
+				  //if (status < GA_NAME)
+				  //pos += bsprintf(pos, "%02x", EA_ID(e->id));
+				  if (status < GA_FULL)    {
+					  //*pos++ = ':';
+					  //*pos++ = ' ';
+					  switch (eattr->type & EAF_TYPE_MASK)  {
+					  case EAF_TYPE_INT:
+						  bsprintf(pos, "%u", eattr->u.data);
+						  break;
+					  case EAF_TYPE_OPAQUE:
+						  //opaque_format(ad, pos, end - pos);
+						  break;
+					  case EAF_TYPE_IP_ADDRESS:
+						  bsprintf(pos, "%I", *(ip_addr *) ad->data);
+						  //printf("HERE %s \n", attr_buf);
+						  break;
+					  case EAF_TYPE_ROUTER_ID:
+						  bsprintf(pos, "%R", eattr->u.data);
+						  break;
+					  case EAF_TYPE_AS_PATH:
+						  as_path_format(ad, pos, end - pos);
+						  break;
+					  case EAF_TYPE_INT_SET:
+						  //printf("int_set\n");
+						  //ea_show_int_set(c, ad, 1, pos, buf, end);
+						  craig_show_int_set(ad, 1, pos, attr_buf, end);
+						  //return;
+						  break;
+					  case EAF_TYPE_EC_SET:
+						  //ea_show_ec_set(c, ad, pos, buf, end);
+						  return;
+					  case EAF_TYPE_UNDEF:
+					  default:
+						  bsprintf(pos, "<type %02x>", eattr->type);
+					  }
+				  }
+			  }
+
+			  //printf("+------- %s\n", attr_buf);
+
+			  if (strstr(buf, "as_path"))
+				  memcpy(aspath, attr_buf, sizeof(aspath));
+			  //else if (strstr(buf, "next_hop")) 
+			  //memcpy(nexthop, attr_buf, sizeof(nexthop));
+			  else if (strstr(buf, "community"))
+				  memcpy(community, attr_buf, sizeof(community));
+		  }
+
+		  //7018 38040 9737|IGP|198.108.93.55|100|0|237:2 237:7018|AG|9737 203.113.12.254|
+		  //printf("N ------- %s\n", nexthop);
+		  fprintf(fp, "%s|IGP|%s|100|0|%s|||\n", aspath, nexthop, community);
+	  }
+  }
+
   debug("\n");
 }
 
@@ -1203,6 +1333,10 @@ rt_dump(rtable *t)
   rte *e;
   net *n;
   struct announce_hook *a;
+  
+
+  fp = fopen("/tmp/a.txt", "w+");
+  printf("Craig Dump *************\n");
 
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
@@ -1218,6 +1352,8 @@ rt_dump(rtable *t)
   WALK_LIST(a, t->hooks)
     debug("\tAnnounces routes to protocol %s\n", a->proto->name);
   debug("\n");
+
+  fclose(fp);
 }
 
 /**
@@ -2239,6 +2375,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
   if (d->verbose)
     rta_show(c, a, tmpa);
+  
 }
 
 static void
