@@ -1342,7 +1342,8 @@ rt_dump(rtable *t)
 	  return;
   
   fp = fopen("/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp", "w+");
-  //printf("Craig Dump *************\n");
+  //printf("Craig Dump %\n");
+  debug("start-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp");
 
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
@@ -1360,6 +1361,9 @@ rt_dump(rtable *t)
   //debug("\n");
 
   fclose(fp);
+  debug("end-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp");
+  exit(0);
+
 }
 
 /**
