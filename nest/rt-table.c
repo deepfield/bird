@@ -1233,7 +1233,6 @@ rte_dump(rte *e)
 	  //printf("------- %s\n", buf);
 	  fprintf(fp, "%s|", buf);
 
-
 	  for(; eal; eal=eal->next) {
 		  for(i=0; i<eal->count; i++) {
 			  //ea_show(c, &eal->attrs[i]);
@@ -1315,8 +1314,8 @@ rte_dump(rte *e)
 
 		  //7018 38040 9737|IGP|198.108.93.55|100|0|237:2 237:7018|AG|9737 203.113.12.254|
 		  //printf("N ------- %s\n", nexthop);
-		  fprintf(fp, "%s|IGP|%s|100|0|%s|||\n", aspath, nexthop, community);
 	  }
+	  fprintf(fp, "%s|IGP|%s|100|0|%s|||\n", aspath, nexthop, community);	  
   }
 
   //debug("\n");
