@@ -1318,7 +1318,7 @@ rte_dump(rte *e)
 	  }
   }
 
-  debug("\n");
+  //debug("\n");
 }
 
 /**
@@ -1334,9 +1334,14 @@ rt_dump(rtable *t)
   net *n;
   struct announce_hook *a;
   
+  int pid;
 
-  fp = fopen("/tmp/a.txt", "w+");
-  printf("Craig Dump *************\n");
+  pid = fork();
+  if (pid > 0)
+	  return;
+  
+  fp = fopen("/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp", "w+");
+  //printf("Craig Dump *************\n");
 
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
@@ -1349,9 +1354,9 @@ rt_dump(rtable *t)
 	rte_dump(e);
     }
   FIB_WALK_END;
-  WALK_LIST(a, t->hooks)
-    debug("\tAnnounces routes to protocol %s\n", a->proto->name);
-  debug("\n");
+  //WALK_LIST(a, t->hooks)
+  //debug("\tAnnounces routes to protocol %s\n", a->proto->name);
+  //debug("\n");
 
   fclose(fp);
 }
