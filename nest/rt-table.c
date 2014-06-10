@@ -1294,7 +1294,8 @@ rte_dump(rte *e)
 						  break;
 					  case EAF_TYPE_EC_SET:
 						  //ea_show_ec_set(c, ad, pos, buf, end);
-						  return;
+						  //return;
+						  break;
 					  case EAF_TYPE_UNDEF:
 					  default:
 						  bsprintf(pos, "<type %02x>", eattr->type);
