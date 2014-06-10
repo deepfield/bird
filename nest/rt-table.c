@@ -42,7 +42,8 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
-#include "stdio.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 pool *rt_table_pool;
