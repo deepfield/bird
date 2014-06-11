@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 pool *rt_table_pool;
 
@@ -1337,6 +1338,9 @@ rt_dump(rtable *t)
   struct announce_hook *a;
   
   int pid;
+
+  // make sure we don't have defunct children
+  signal(SIGCHLD, SIG_IGN);
 
   pid = fork();
   if (pid > 0)
