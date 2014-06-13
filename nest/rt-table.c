@@ -1336,19 +1336,25 @@ rt_dump(rtable *t)
   rte *e;
   net *n;
   struct announce_hook *a;
+  char	buffer_tmp[1024];
+  char	buffer[1024];
   
-  int pid;
+  int pid, parent_pid;
 
   // make sure we don't have defunct children
   signal(SIGCHLD, SIG_IGN);
+
+  parent_pid = getpid();
 
   pid = fork();
   if (pid > 0)
 	  return;
   
-  fp = fopen("/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp", "w+");
-  //printf("Craig Dump %\n");
-  debug("start-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp");
+  snprintf(buffer_tmp, sizeof(buffer_tmp), "/pipedream/cache/bgp/dumps/local_bgpdump.%d.txt.tmp", parent_pid);
+  snprintf(buffer, sizeof(buffer), "/pipedream/cache/bgp/dumps/local_bgpdump.%d.txt", parent_pid);
+
+  fp = fopen(buffer_tmp, "w+");
+  debug("start-dump: %s\n", buffer);
 
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
@@ -1366,8 +1372,8 @@ rt_dump(rtable *t)
   //debug("\n");
 
   fclose(fp);
-  rename("/pipedream/cache/bgp/dumps/local_bgpdump.txt.tmp", "/pipedream/cache/bgp/dumps/local_bgpdump.txt");
-  debug("end-dump: %s\n", "/pipedream/cache/bgp/dumps/local_bgpdump.txt");
+  rename(buffer_tmp, buffer);
+  debug("end-dump: %s\n", buffer);
   exit(0);
 
 }
