@@ -1311,7 +1311,7 @@ rte_dump(rte *e)
 				  memcpy(aspath, attr_buf, sizeof(aspath));
 			  //else if (strstr(buf, "next_hop")) 
 			  //memcpy(nexthop, attr_buf, sizeof(nexthop));
-			  else if (strstr(buf, "community"))
+			  else if (!memcmp(buf, "community", strlen("community")))
 				  memcpy(community, attr_buf, sizeof(community));
 		  }
 
