@@ -1199,6 +1199,9 @@ rte_dump(rte *e)
 {
   net *n = e->net;
 
+	// prevent truncated dumps
+	int DUMP_MSG_SIZE = 4098;
+
   //debug("%-1I/%2d ", n->n.prefix, n->n.pxlen);
   //debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
   //rta_dump(e->attrs);
@@ -1213,13 +1216,13 @@ rte_dump(rte *e)
 	  eattr *eattr;
 	  int status = GA_UNKNOWN;
 
-	  byte buf[CLI_MSG_SIZE];
-	  byte attr_buf[CLI_MSG_SIZE];
+	  byte buf[DUMP_MSG_SIZE];
+	  byte attr_buf[DUMP_MSG_SIZE];
 	  byte *pos = buf, *end = buf + sizeof(buf);
 
-	  byte aspath[CLI_MSG_SIZE];
-	  byte community[CLI_MSG_SIZE];
-	  byte nexthop[CLI_MSG_SIZE];
+	  byte aspath[DUMP_MSG_SIZE];
+	  byte community[DUMP_MSG_SIZE];
+	  byte nexthop[DUMP_MSG_SIZE];
 
 	  memset(aspath, 0, sizeof(aspath));
 	  memset(community, 0, sizeof(community));
