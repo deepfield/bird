@@ -57,6 +57,7 @@
 #include "lib/lists.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include <stdio.h>
 
 #include "rip.h"
 
@@ -546,7 +547,7 @@ rip_timer(timer *t)
 
     CHK_MAGIC;
 
-    DBG( "Garbage: (%p)", rte ); rte_dump( rte );
+    DBG( "Garbage: (%p)", rte ); rte_dump( rte, stderr );
 
     if (now - rte->lastmod > P_CF->timeout_time) {
       TRACE(D_EVENTS, "entry is too old: %I", rte->net->n.prefix );
