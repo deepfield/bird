@@ -554,7 +554,7 @@ krt_dump(struct proto *P)
   if (!KRT_CF->learn)
     return;
   debug("KRT: Table of inheritable routes\n");
-  rt_dump(&p->krt_table);
+  rt_dump(&p->krt_table, "./");
 }
 
 static void

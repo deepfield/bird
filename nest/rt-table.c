@@ -1265,14 +1265,14 @@ dc_get_dumpfile_entry(struct dumpfile_cache *dc, ip_addr neighbor,
 }
 
 static void
-get_dump_filename(char *buffer, size_t buflen, ip_addr neighbor,
-		  pid_t ppid, const char *suffix)
+get_dump_filename(char *buffer, size_t buflen, const char *dump_dir,
+		  ip_addr neighbor, pid_t ppid, const char *suffix)
 {
 	byte	from[STD_ADDRESS_P_LENGTH+2];
 
 	bsprintf(from, "%I", neighbor);
-	snprintf(buffer, buflen, "/pipedream/bgp/dumps/local_bgpdump."
-			         "%d.%s.txt%s", ppid, from, suffix);
+	snprintf(buffer, buflen, "%s/local_bgpdump.%d.%s.txt%s", dump_dir, ppid,
+		 from, suffix);
 }
 
 static FILE *
@@ -1291,7 +1291,8 @@ open_dump_file(const char *filename) {
 }
 
 static FILE *
-dc_get_neighbor_fp(struct dumpfile_cache *dc, ip_addr neighbor)
+dc_get_neighbor_fp(struct dumpfile_cache *dc, const char *dump_dir,
+		   ip_addr neighbor)
 {
 	char buffer[1024];
 	struct dumpfile_entry	*de = NULL;
@@ -1305,11 +1306,11 @@ dc_get_neighbor_fp(struct dumpfile_cache *dc, ip_addr neighbor)
 		de->neighbor = neighbor;
 		de->hash_key = k;
 		dc_insert(dc, de);
-		get_dump_filename(buffer, sizeof(buffer), neighbor,
+		get_dump_filename(buffer, sizeof(buffer), dump_dir, neighbor,
 				  parent_pid, ".tmp");
 		de->tmpfilename = strdup(buffer);
 		de->fp = open_dump_file(de->tmpfilename);
-		get_dump_filename(buffer, sizeof(buffer), neighbor,
+		get_dump_filename(buffer, sizeof(buffer), dump_dir, neighbor,
 				  parent_pid, "");
 		de->filename = strdup(buffer);
 	}
@@ -1464,7 +1465,7 @@ rte_dump(rte *e, FILE *fp)
  * This function dumps contents of a given routing table to debug output.
  */
 void
-rt_dump(rtable *t)
+rt_dump(rtable *t, const char *dump_dir)
 {
   rte *e;
   net *n;
@@ -1495,12 +1496,13 @@ rt_dump(rtable *t)
   FIB_WALK(&t->fib, fn)
     {
       n = (net *) fn;
-      for(e=n->routes; e; e=e->next)
-	  fp = dc_get_neighbor_fp(dc, e->attrs->from);
-	  if (fp == NULL) {
-		  continue;
-	  }
-	rte_dump(e, dc);
+      for(e=n->routes; e; e=e->next) {
+        fp = dc_get_neighbor_fp(dc, dump_dir, e->attrs->from);
+        if (fp == NULL) {
+          continue;
+        }
+        rte_dump(e, fp);
+      }
     }
   FIB_WALK_END;
   //WALK_LIST(a, t->hooks)
@@ -1527,12 +1529,12 @@ rt_dump(rtable *t)
  * This function dumps contents of all routing tables to debug output.
  */
 void
-rt_dump_all(void)
+rt_dump_all(const char *dump_dir)
 {
   rtable *t;
 
   WALK_LIST(t, routing_tables)
-    rt_dump(t);
+    rt_dump(t, dump_dir);
 }
 
 static inline void
