@@ -1510,12 +1510,12 @@ rt_dump(rtable *t, const char *dump_dir)
   //debug("\n");
 
   for (idx = 0; idx < dc->hash_nbuckets; idx++) {
-	  for (de = dc->hash_table[idx]; de != NULL; de = de->next) {
-		 if (de->fp != NULL) {
-			 fclose(de->fp);
-			 rename(de->tmpfilename, de->filename);
-		 }
-	  }
+    for (de = dc->hash_table[idx]; de != NULL; de = de->next) {
+      if (de->fp != NULL) {
+        fclose(de->fp);
+        rename(de->tmpfilename, de->filename);
+      }
+    }
   }
 
   debug("end-dump: %s\n", buffer);
