@@ -42,10 +42,15 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <signal.h>
+
+pid_t parent_pid = 0;
 
 pool *rt_table_pool;
 
@@ -62,8 +67,6 @@ static void rt_next_hop_update(rtable *tab);
 static inline int rt_prune_table(rtable *tab);
 static inline void rt_schedule_gc(rtable *tab);
 static inline void rt_schedule_prune(rtable *tab);
-
-static FILE *fp = NULL;
 
 static inline struct ea_list *
 make_tmp_attrs(struct rte *rt, struct linpool *pool)
@@ -1189,13 +1192,141 @@ craig_show_int_set(struct adata *ad, int way, byte *pos, byte *buf, byte *end)
 }
 
 /**
+ * Mapping from neighbor IPs to dump file pointers
+ */
+
+struct dumpfile_entry {
+	struct dumpfile_entry *next;
+	ip_addr	neighbor;
+	FILE *fp;
+	unsigned hash_key;
+	char *filename;
+	char *tmpfilename;
+};
+
+struct dumpfile_cache {
+	struct	dumpfile_entry **hash_table;
+	unsigned	hash_order;
+	unsigned	hash_shift;
+	unsigned	hash_nbuckets;
+};
+
+static struct dumpfile_cache *
+init_dumpfile_cache(void)
+{
+	unsigned	order;
+	unsigned	nbuckets;
+	struct dumpfile_cache *dc = calloc(1, sizeof(struct dumpfile_cache));
+
+	order = 10;
+	nbuckets = 1 << order;
+	dc->hash_order = order;
+	dc->hash_shift = 16 - order;
+	dc->hash_table = calloc(nbuckets, sizeof(struct dumpfile_entry *));
+	dc->hash_nbuckets = nbuckets;
+
+	return dc;
+}
+
+static inline unsigned
+de_hash(ip_addr neighbor)
+{
+	return ipa_hash(neighbor) & 0xffff;
+}
+
+static inline void
+dc_insert(struct dumpfile_cache *dc, struct dumpfile_entry *de)
+{
+	unsigned int	k;
+
+	k = de->hash_key >> dc->hash_shift;
+	de->next = dc->hash_table[k];
+	dc->hash_table[k] = de;
+}
+
+static struct dumpfile_entry *
+dc_get_dumpfile_entry(struct dumpfile_cache *dc, ip_addr neighbor,
+		      unsigned int k)
+{
+	struct dumpfile_entry	*next = NULL;
+	struct dumpfile_entry	*de = NULL;
+	unsigned int		bucket;
+
+	bucket = k >> dc->hash_shift;
+	assert(bucket < dc->hash_nbuckets);
+	for (next = dc->hash_table[bucket]; next != NULL; next = next->next) {
+		if (ipa_equal(next->neighbor, neighbor)) {
+			de = next;
+			break;
+		}
+	}
+
+	return de;
+}
+
+static void
+get_dump_filename(char *buffer, size_t buflen, const char *dump_dir,
+		  ip_addr neighbor, pid_t ppid, const char *suffix)
+{
+	byte	from[STD_ADDRESS_P_LENGTH+2];
+
+	bsprintf(from, "%I", neighbor);
+	snprintf(buffer, buflen, "%s/local_bgpdump.%d.%s.txt%s", dump_dir, ppid,
+		 from, suffix);
+}
+
+static FILE *
+open_dump_file(const char *filename) {
+	FILE *fp;
+	fp = fopen(filename, "w+");
+	if (fp == NULL) {
+		debug("failed-to-open-dump-file %s: %s\n", filename,
+		      strerror(errno));
+	}
+	else {
+		debug("start-dump-file: %s\n", filename);
+	}
+
+	return fp;
+}
+
+static FILE *
+dc_get_neighbor_fp(struct dumpfile_cache *dc, const char *dump_dir,
+		   ip_addr neighbor)
+{
+	char buffer[1024];
+	struct dumpfile_entry	*de = NULL;
+	unsigned int		k;
+
+	k = de_hash(neighbor);
+	de = dc_get_dumpfile_entry(dc, neighbor, k);
+
+	if (de == NULL) {
+		de = calloc(1, sizeof(struct dumpfile_entry));
+		de->neighbor = neighbor;
+		de->hash_key = k;
+		dc_insert(dc, de);
+		get_dump_filename(buffer, sizeof(buffer), dump_dir, neighbor,
+				  parent_pid, ".tmp");
+		de->tmpfilename = strdup(buffer);
+		de->fp = open_dump_file(de->tmpfilename);
+		get_dump_filename(buffer, sizeof(buffer), dump_dir, neighbor,
+				  parent_pid, "");
+		de->filename = strdup(buffer);
+	}
+
+	return de->fp;
+}
+
+
+/**
  * rte_dump - dump a route
  * @e: &rte to be dumped
  *
  * This functions dumps contents of a &rte to debug output.
  */
 void
-rte_dump(rte *e)
+rte_dump(rte *e, FILE *fp)
 {
   net *n = e->net;
 
@@ -1334,15 +1465,18 @@ rte_dump(rte *e)
  * This function dumps contents of a given routing table to debug output.
  */
 void
-rt_dump(rtable *t)
+rt_dump(rtable *t, const char *dump_dir)
 {
   rte *e;
   net *n;
+  int idx;
   struct announce_hook *a;
-  char	buffer_tmp[1024];
+  struct dumpfile_cache *dc;
+  struct dumpfile_entry *de;
   char	buffer[1024];
+  FILE *fp;
   
-  int pid, parent_pid;
+  int pid;
 
   // make sure we don't have defunct children
   signal(SIGCHLD, SIG_IGN);
@@ -1352,12 +1486,8 @@ rt_dump(rtable *t)
   pid = fork();
   if (pid > 0)
 	  return;
-  
-  snprintf(buffer_tmp, sizeof(buffer_tmp), "/pipedream/cache/bgp/dumps/local_bgpdump.%d.txt.tmp", parent_pid);
-  snprintf(buffer, sizeof(buffer), "/pipedream/cache/bgp/dumps/local_bgpdump.%d.txt", parent_pid);
 
-  fp = fopen(buffer_tmp, "w+");
-  debug("start-dump: %s\n", buffer);
+  dc = init_dumpfile_cache();
 
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
@@ -1366,16 +1496,28 @@ rt_dump(rtable *t)
   FIB_WALK(&t->fib, fn)
     {
       n = (net *) fn;
-      for(e=n->routes; e; e=e->next)
-	rte_dump(e);
+      for(e=n->routes; e; e=e->next) {
+        fp = dc_get_neighbor_fp(dc, dump_dir, e->attrs->from);
+        if (fp == NULL) {
+          continue;
+        }
+        rte_dump(e, fp);
+      }
     }
   FIB_WALK_END;
   //WALK_LIST(a, t->hooks)
   //debug("\tAnnounces routes to protocol %s\n", a->proto->name);
   //debug("\n");
 
-  fclose(fp);
-  rename(buffer_tmp, buffer);
+  for (idx = 0; idx < dc->hash_nbuckets; idx++) {
+    for (de = dc->hash_table[idx]; de != NULL; de = de->next) {
+      if (de->fp != NULL) {
+        fclose(de->fp);
+        rename(de->tmpfilename, de->filename);
+      }
+    }
+  }
+
   debug("end-dump: %s\n", buffer);
   exit(0);
 
@@ -1387,12 +1529,12 @@ rt_dump(rtable *t)
  * This function dumps contents of all routing tables to debug output.
  */
 void
-rt_dump_all(void)
+rt_dump_all(const char *dump_dir)
 {
   rtable *t;
 
   WALK_LIST(t, routing_tables)
-    rt_dump(t);
+    rt_dump(t, dump_dir);
 }
 
 static inline void

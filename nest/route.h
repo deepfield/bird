@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 #include "nest/protocol.h"
+#include <stdio.h>
 
 struct protocol;
 struct proto;
@@ -265,12 +266,12 @@ void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
 void rt_refresh_begin(rtable *t, struct announce_hook *ah);
 void rt_refresh_end(rtable *t, struct announce_hook *ah);
-void rte_dump(rte *);
+void rte_dump(rte *, FILE *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
-void rt_dump(rtable *);
-void rt_dump_all(void);
+void rt_dump(rtable *, const char *);
+void rt_dump_all(const char *);
 int rt_feed_baby(struct proto *p);
 void rt_feed_baby_abort(struct proto *p);
 int rt_prune_loop(void);

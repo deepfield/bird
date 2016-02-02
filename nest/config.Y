@@ -626,8 +626,8 @@ CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
 { rta_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
-{ rt_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP ROUTES, text, <output-dir>, [[Dump routing table]])
+{ rt_dump_all($3); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 
