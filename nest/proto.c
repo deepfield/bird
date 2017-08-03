@@ -19,6 +19,8 @@
 #include "nest/iface.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 pool *proto_pool;
 
@@ -54,6 +56,10 @@ static void proto_rethink_goal(struct proto *p);
 static void proto_want_export_up(struct proto *p);
 static void proto_fell_down(struct proto *p);
 static char *proto_state_name(struct proto *p);
+static void notify_bgp_stat_daemon(struct proto *p);
+
+#define BGP_PORT    4000
+#define BGP_ADDR    "127.0.0.1"
 
 static void
 proto_relink(struct proto *p)
@@ -89,10 +95,56 @@ proto_log_state_change(struct proto *p)
 	{
 	  p->last_state_name_announced = name;
 	  PD(p, "State changed to %s", proto_state_name(p));
+	  notify_bgp_stat_daemon(p);
 	}
     }
   else
     p->last_state_name_announced = NULL;
+}
+
+/**
+ * @proto: pointer to struct proto
+ * Function sends a UDP message to the BGP stat daemon notifying the state of the router
+ * This function will be called whenever the router state changes
+ */
+static void
+notify_bgp_stat_daemon(struct proto *p){
+  if (!p)
+  {
+    return;
+  }
+  char * state = proto_state_name(p);
+  char * name = p->name;
+  char * message = (char*)malloc(strlen(state) + strlen(name)+ 20);
+  sprintf(message, "{\"%s\":\"%s\"}", name, state);
+  send_message_to_bgp_daemon(message);
+}
+
+/**
+ * @message: message to send to the BGP daemon
+ * Function will send a UDP message to BGP stat daemon
+ */
+static int
+send_message_to_bgp_daemon(char* message){
+    int sockfd;
+    struct sockaddr_in ai_addr;
+    int numbytes;
+    ai_addr.sin_family = AF_INET;
+    ai_addr.sin_port = htons(BGP_PORT);
+    ai_addr.sin_addr.s_addr = inet_addr(BGP_ADDR);
+
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+        return -1;
+    }
+
+    if ((numbytes = sendto(sockfd, message, strlen(message), 0, (struct sockaddr *) &ai_addr, sizeof(ai_addr))) == -1) {
+        return -1;
+    }
+
+    printf("sent %d bytes\n", numbytes);
+    close(sockfd);
+
+    return 0;
 }
 
 
