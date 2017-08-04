@@ -57,8 +57,10 @@ static void proto_want_export_up(struct proto *p);
 static void proto_fell_down(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void notify_bgp_stat_daemon(struct proto *p);
+static int send_message_to_bgp_daemon(char *);
 
-#define BGP_PORT    4000
+
+#define BGP_PORT    4123
 #define BGP_ADDR    "127.0.0.1"
 
 static void
