@@ -1310,7 +1310,7 @@ bgp_last_errmsg(struct bgp_proto *p)
     }
 }
 
-static const char *
+const char *
 bgp_state_dsc(struct bgp_proto *p)
 {
   if (p->p.proto_state == PS_DOWN)
