@@ -131,10 +131,11 @@ notify_bgp_stat_daemon(struct proto *P)
     char* name = P->name;
     char * message = (char*)malloc(1024);
     struct bgp_config *cf = p->cf;
-    time_t last_state_change = (time_t) P->last_state_change;
+    time_t time_of_change = time(NULL); // return same value as time.time() 
+    // time_t last_state_change = (time_t) P->last_state_change;
     char buf[80];
-    struct tm * ts = localtime(&last_state_change);
-    strftime(buf, sizeof(buf), "%S", ts);
+    struct tm * ts = gmtime(&time_of_change);
+    strftime(buf, sizeof(buf), "%Y-%m-%d-%H-%M-%S", ts);
     bsprintf(message, "%s$%I$%s$%s", name, cf->remote_ip,state, buf);
     send_message_to_bgp_daemon(message);
     free(message);
@@ -472,6 +473,7 @@ proto_init(struct proto_config *c)
 
   add_tail(&proto_list, &q->glob_node);
   PD(q, "Initializing%s", q->disabled ? " [disabled]" : "");
+  notify_bgp_stat_daemon(q);
   return q;
 }
 
