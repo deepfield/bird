@@ -102,10 +102,10 @@ proto_log_state_change(struct proto *p)
     char *name = proto_state_name(p);
     if (name != p->last_state_name_announced)
     {
-	    p->last_state_name_announced = name;
-	    PD(p, "State changed to %s", proto_state_name(p));
-  	  notify_bgp_stat_daemon(p);
-	  }
+      p->last_state_name_announced = name;
+      PD(p, "State changed to %s", proto_state_name(p));
+      notify_bgp_stat_daemon(p);
+    }
   }
   else{
     p->last_state_name_announced = NULL;
