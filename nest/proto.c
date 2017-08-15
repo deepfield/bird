@@ -24,7 +24,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <stdlib.h>
-#include "lib/ipv4.h"
+#include "lib/ip.h"
 
 #include "nest/locks.h"
 #include "lib/string.h"
@@ -63,11 +63,12 @@ static void proto_want_export_up(struct proto *p);
 static void proto_fell_down(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void notify_bgp_stat_daemon(struct proto *p);
-static int send_message_to_bgp_daemon(char *);
+static int send_message_to_bgp_stat_daemon(char *);
 
 
-#define BGP_STAT_DAEMON_PORT    4123
-#define BGP_STAT_DAEMON_ADDR    "127.0.0.1"
+#define BGP_STAT_DAEMON_ADDR "127.0.0.1"
+#define BGP_STAT_DAEMON_PORT 4123
+
 
 static void
 proto_relink(struct proto *p)
@@ -112,9 +113,9 @@ proto_log_state_change(struct proto *p)
 }
 
 /**
- * @proto: pointer to struct proto
  * Function sends a UDP message to the BGP stat daemon notifying the state of the router
  * This function will be called whenever the router state changes
+ * @proto: pointer to struct proto
  */
 static void
 notify_bgp_stat_daemon(struct proto *P)
@@ -123,56 +124,59 @@ notify_bgp_stat_daemon(struct proto *P)
   {
     return;
   }
+
   // Checks if it is a BGP protocol to send data to the BGP daemon
   if (P->cf->protocol == &proto_bgp && P->proto)
   {
-    struct bgp_proto *p = (struct bgp_proto *) P;
+    struct bgp_proto * p = (struct bgp_proto *)P;
     const char * state = bgp_state_dsc(p);
-    char* name = P->name;
-    char * message = (char*)malloc(1024);
-    struct bgp_config *cf = p->cf;
-    time_t time_of_change = time(NULL); // return same value as time.time() 
-    // time_t last_state_change = (time_t) P->last_state_change;
-    char buf[80];
+    char * name = P->name;
+    char message[1023 + 1];
+    struct bgp_config * cf = p->cf;
+    time_t time_of_change = time(NULL);
+    char buf[127 + 1];
     struct tm * ts = gmtime(&time_of_change);
-    strftime(buf, sizeof(buf), "%Y-%m-%d-%H-%M-%S", ts);
-    bsprintf(message, "%s$%I$%s$%s", name, cf->remote_ip,state, buf);
-    send_message_to_bgp_daemon(message);
-    free(message);
+    strftime(buf, sizeof(buf) - 1, "%Y-%m-%d-%H-%M-%S", ts);
+    bsnprintf(message, 1023, "%s$%I$%s$%s", name, cf->remote_ip, state, buf);
+    message[1023] = '\0';
+    send_message_to_bgp_stat_daemon(message);
   }
-  
 }
 
 /**
- * @message: message to send to the BGP daemon
- * Function will send a UDP message to BGP stat daemon
+ * Send a UDP message to BGP stat daemon
+ * @message: message to send
  */
 static int
-send_message_to_bgp_daemon(char* message)
+send_message_to_bgp_stat_daemon(char* message)
 {
-    int sockfd;
-    struct sockaddr_in ai_addr;
-    int numbytes;
-    ai_addr.sin_family = AF_INET;
-    ai_addr.sin_port = htons(BGP_STAT_DAEMON_PORT);
-    ai_addr.sin_addr.s_addr = inet_addr(BGP_STAT_DAEMON_ADDR);
+  int sockfd = -1;
+  struct sockaddr_in ai_addr;
+  ssize_t message_len;
+  ssize_t numbytes;
 
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) 
-    {
-        log(L_WARN "Unable to create UDP socket to BGP stat daemon.");
-        return -1;
-    }
+  sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (sockfd == -1)
+  {
+    log(L_WARN "Failed to create UDP socket.");
+    return -1;
+  }
 
-    if ((numbytes = sendto(sockfd, message, strlen(message), 0, (struct sockaddr *) &ai_addr, sizeof(ai_addr))) == -1) 
-    {
-        log(L_WARN "Unable to send UDP message to BGP stat daemon.");
-        return -1;
-    }
-    close(sockfd);
+  ai_addr.sin_family = AF_INET;
+  ai_addr.sin_addr.s_addr = inet_addr(BGP_STAT_DAEMON_ADDR);
+  ai_addr.sin_port = htons(BGP_STAT_DAEMON_PORT);
+  message_len = strlen(message);
+  numbytes = sendto(sockfd, message, message_len, 0, (struct sockaddr *)&ai_addr, sizeof(ai_addr));
+  if (numbytes != message_len) 
+  {
+    log(L_WARN "Failed to send UDP message to BGP stat daemon.");
+    return -2;
+  }
 
-    return 0;
+  close(sockfd);
+
+  return 0;
 }
-
 
 /**
  * proto_new - create a new protocol instance
