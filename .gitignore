@@ -1,0 +1,15 @@
+
+# Intermediate files
+/autom4te.cache/
+/obj/
+# configure is built with autoconf
+configure
+config.log
+config.status
+# Makefile is built by configure
+Makefile
+
+# Products
+bird
+birdc
+birdcl
