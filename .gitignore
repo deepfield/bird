@@ -13,3 +13,6 @@ Makefile
 bird
 birdc
 birdcl
+
+# IDE configurations
+/.vscode/
