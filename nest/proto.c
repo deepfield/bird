@@ -50,6 +50,26 @@ static timer *gr_wait_timer;
 #define GRS_ACTIVE	2
 #define GRS_DONE	3
 
+#define DF_BGP_STAT_DAEMON_ADDR "127.0.0.1"
+#define DF_BGP_STAT_DAEMON_PORT 4123
+#define DF_BGP_STAT_DAEMON_MSG_MAGIC 0xDFDFDFDF
+#define DF_BGP_STAT_DAEMON_MSG_TYPE 0
+
+#pragma pack(push, 1)
+struct df_bgp_stat_daemon_msg {
+    // Header
+    u32 magic;              // BGP_STAT_DAEMON_MSG_MAGIC
+    u32 type;               // BGP_STAT_DAEMON_MSG_TYPE
+    // Body
+    u32 timestamp;          // UNIX timestamp (GMT)
+    char name[31+1];        // NUL-terminated protocol name (e.g. "bgp1")
+    u16 family;             // AF_INET / AF_INET6
+    u8 addr[16];            // Address (ipv4_addr or ipv6_addr struct)
+    u32 proto_state;        // Protocol state - see PS_* in protocolh
+    u32 conn_state;         // Connection state - see BS_* in bgp.h
+};
+#pragma pack(pop)
+
 static int graceful_restart_state;
 static u32 graceful_restart_locks;
 
@@ -62,12 +82,9 @@ static void proto_rethink_goal(struct proto *p);
 static void proto_want_export_up(struct proto *p);
 static void proto_fell_down(struct proto *p);
 static char *proto_state_name(struct proto *p);
-static void notify_bgp_stat_daemon(struct proto *p);
-static int send_message_to_bgp_stat_daemon(char *);
 
-
-#define BGP_STAT_DAEMON_ADDR "127.0.0.1"
-#define BGP_STAT_DAEMON_PORT 4123
+static void df_notify_bgp_stat_daemon(struct proto *p);
+static int df_send_message_to_bgp_stat_daemon(const struct df_bgp_stat_daemon_msg *);
 
 
 static void
@@ -104,7 +121,7 @@ proto_log_state_change(struct proto *p)
     {
       p->last_state_name_announced = name;
       PD(p, "State changed to %s", proto_state_name(p));
-      notify_bgp_stat_daemon(p);
+      df_notify_bgp_stat_daemon(p);
     }
   }
   else{
@@ -118,7 +135,7 @@ proto_log_state_change(struct proto *p)
  * @proto: pointer to struct proto
  */
 static void
-notify_bgp_stat_daemon(struct proto *P)
+df_notify_bgp_stat_daemon(struct proto *P)
 {
   if (!P)
   {
@@ -129,17 +146,24 @@ notify_bgp_stat_daemon(struct proto *P)
   if (P->cf->protocol == &proto_bgp && P->proto)
   {
     struct bgp_proto * p = (struct bgp_proto *)P;
-    const char * state = bgp_state_dsc(p);
-    char * name = P->name;
-    char message[1023 + 1];
     struct bgp_config * cf = p->cf;
-    time_t time_of_change = time(NULL);
-    char buf[127 + 1];
-    struct tm * ts = gmtime(&time_of_change);
-    strftime(buf, sizeof(buf) - 1, "%Y-%m-%d-%H-%M-%S", ts);
-    bsnprintf(message, 1023, "%s$%I$%s$%s", name, cf->remote_ip, state, buf);
-    message[1023] = '\0';
-    send_message_to_bgp_stat_daemon(message);
+    struct df_bgp_stat_daemon_msg message;
+
+    memset(&message, 0, sizeof(message));
+    message.magic = DF_BGP_STAT_DAEMON_MSG_MAGIC;
+    message.type = DF_BGP_STAT_DAEMON_MSG_TYPE;
+    message.timestamp = (u32)time(NULL);
+    strncpy(message.name, P->name, 31);
+#ifndef IPV6
+    message.family = AF_INET;
+#else
+    message.family = AF_INET6;
+#endif
+    memcpy(message.addr, (void *)&(cf->remote_ip), sizeof(cf->remote_ip));
+    // See bgp_state_dsc() for the below logic.
+    message.proto_state = (u32)(p->p.proto_state);
+    message.conn_state = (u32)(MAX(p->incoming_conn.state, p->outgoing_conn.state));
+    df_send_message_to_bgp_stat_daemon(&message);
   }
 }
 
@@ -148,7 +172,7 @@ notify_bgp_stat_daemon(struct proto *P)
  * @message: message to send
  */
 static int
-send_message_to_bgp_stat_daemon(char* message)
+df_send_message_to_bgp_stat_daemon(const struct df_bgp_stat_daemon_msg * const message)
 {
   int sockfd = -1;
   struct sockaddr_in ai_addr;
@@ -163,9 +187,9 @@ send_message_to_bgp_stat_daemon(char* message)
   }
 
   ai_addr.sin_family = AF_INET;
-  ai_addr.sin_addr.s_addr = inet_addr(BGP_STAT_DAEMON_ADDR);
-  ai_addr.sin_port = htons(BGP_STAT_DAEMON_PORT);
-  message_len = strlen(message);
+  ai_addr.sin_addr.s_addr = inet_addr(DF_BGP_STAT_DAEMON_ADDR);
+  ai_addr.sin_port = htons(DF_BGP_STAT_DAEMON_PORT);
+  message_len = sizeof(struct df_bgp_stat_daemon_msg);
   numbytes = sendto(sockfd, message, message_len, 0, (struct sockaddr *)&ai_addr, sizeof(ai_addr));
   if (numbytes != message_len) 
   {
@@ -477,7 +501,7 @@ proto_init(struct proto_config *c)
 
   add_tail(&proto_list, &q->glob_node);
   PD(q, "Initializing%s", q->disabled ? " [disabled]" : "");
-  notify_bgp_stat_daemon(q);
+  df_notify_bgp_stat_daemon(q);
   return q;
 }
 
